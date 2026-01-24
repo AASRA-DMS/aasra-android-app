@@ -12,7 +12,20 @@
           "package_name": "com.roshnab.aasra"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1048876079888-64iicng4sn3jpd00em74qep977jphi2j.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.roshnab.aasra",
+            "certificate_hash": "71ac2aa2981601419f4d53bffbec39df87afcab1"
+          }
+        },
+        {
+          "client_id": "1048876079888-p249t5h202c6ul2574i4r2k178vv9t8l.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCULn51CdxikkTRYj42I7ONS1AjzYPU3Zc"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1048876079888-p249t5h202c6ul2574i4r2k178vv9t8l.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
