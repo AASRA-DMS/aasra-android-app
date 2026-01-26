@@ -34,7 +34,8 @@ import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
 @Composable
 fun HomeScreen(
-    onReportClick: (Double, Double) -> Unit
+    onReportClick: (Double, Double) -> Unit,
+    onDonationClick: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -153,7 +154,13 @@ fun HomeScreen(
 
             AasraBottomBar(
                 currentScreen = currentScreen,
-                onScreenSelected = { currentScreen = it }
+                onScreenSelected = { screen ->
+                    if (screen == BottomNavScreen.Donations) {
+                        onDonationClick()
+                    } else {
+                        currentScreen = screen
+                    }
+                }
             )
         }
     }

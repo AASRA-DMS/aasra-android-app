@@ -7,6 +7,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.roshnab.aasra.auth.AuthScreen
+import com.roshnab.aasra.screens.DonationScreen
 import com.roshnab.aasra.screens.HomeScreen
 import com.roshnab.aasra.screens.ReportScreen
 
@@ -26,8 +27,16 @@ fun AasraNavigation() {
             HomeScreen(
                 onReportClick = { lat, lng ->
                     navController.navigate("report/${lat.toFloat()}/${lng.toFloat()}")
+                },
+
+                onDonationClick = {
+                    navController.navigate("donation")
                 }
             )
+        }
+
+        composable("donation") {
+            DonationScreen(onBackClick = { navController.popBackStack() })
         }
 
         composable(
