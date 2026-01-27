@@ -1,9 +1,14 @@
 package com.roshnab.aasra.screens
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.ContactsContract
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,12 +19,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Feedback
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -36,7 +43,30 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    val state = viewModel.uiState // Get Real Data
+    val state = viewModel.uiState
+
+    val contactLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val uri = result.data?.data
+            if (uri != null) {
+                viewModel.addContactFromUri(uri)
+                Toast.makeText(context, "Contact Added!", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val intent = Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+            contactLauncher.launch(intent)
+        } else {
+            Toast.makeText(context, "Permission needed to add contacts", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     var isDarkTheme by remember { mutableStateOf(false) }
     var areNotificationsEnabled by remember { mutableStateOf(true) }
@@ -56,7 +86,6 @@ fun ProfileScreen(
             )
         }
     ) { padding ->
-
         if (state.isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -71,20 +100,51 @@ fun ProfileScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
 
-                ProfileHeaderSection(
-                    name = state.name,
-                    email = state.email,
-                    totalDonated = state.totalDonated
-                )
+                ProfileHeaderSection(state.name, state.email, state.totalDonated)
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SectionTitle("Safety & Emergency")
-                    SettingsItem(Icons.Filled.ContactPhone, "Emergency Contacts", "Manage trusted contacts") {
-                        Toast.makeText(context, "Feature coming soon", Toast.LENGTH_SHORT).show()
+
+                    SettingsItem(
+                        icon = Icons.Filled.PersonAdd,
+                        title = "Add Emergency Contact",
+                        subtitle = "Select from phone book"
+                    ) {
+                        permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
                     }
-                    SettingsItem(Icons.Filled.Home, "Safe Locations", "Set Home & Work for auto-alerts") {
-                        Toast.makeText(context, "Feature coming soon", Toast.LENGTH_SHORT).show()
+
+                    if (state.emergencyContacts.isNotEmpty()) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                state.emergencyContacts.forEach { contact ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column {
+                                            Text(contact.name, fontWeight = FontWeight.Bold)
+                                            Text(contact.number, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                        }
+                                        IconButton(onClick = { viewModel.removeContact(contact) }) {
+                                            Icon(Icons.Outlined.Delete, "Remove", tint = MaterialTheme.colorScheme.error)
+                                        }
+                                    }
+                                    if (contact != state.emergencyContacts.last()) {
+                                        Divider(color = Color.LightGray.copy(alpha = 0.3f))
+                                    }
+                                }
+                            }
+                        }
                     }
+
+                    SettingsItem(Icons.Filled.Home, "Safe Locations", "Set Home & Work (Coming Next)") { }
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
