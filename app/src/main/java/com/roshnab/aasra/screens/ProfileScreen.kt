@@ -32,7 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.roshnab.aasra.data.EmergencyContact
 import com.roshnab.aasra.data.ProfileViewModel
+import com.roshnab.aasra.data.SafeLocation
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,6 +46,10 @@ fun ProfileScreen(
 ) {
     val context = LocalContext.current
     val state = viewModel.uiState
+
+    // --- DIALOG STATES ---
+    var contactToDelete by remember { mutableStateOf<EmergencyContact?>(null) }
+    var locationToDelete by remember { mutableStateOf<SafeLocation?>(null) }
 
     val contactLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -139,7 +145,7 @@ fun ProfileScreen(
                                         Text(contact.name, fontWeight = FontWeight.Bold)
                                         Text(contact.number, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                                     }
-                                    IconButton(onClick = { viewModel.removeContact(contact) }) {
+                                    IconButton(onClick = { contactToDelete = contact }) {
                                         Icon(Icons.Outlined.Delete, "Remove", tint = MaterialTheme.colorScheme.error)
                                     }
                                 }
@@ -172,8 +178,7 @@ fun ProfileScreen(
                             title = loc.name,
                             subtitle = "${String.format("%.4f", loc.latitude)}, ${String.format("%.4f", loc.longitude)}"
                         ) {
-                            viewModel.removeSafeLocation(loc)
-                            Toast.makeText(context, "Location Removed", Toast.LENGTH_SHORT).show()
+                            locationToDelete = loc
                         }
                     }
                 }
@@ -201,6 +206,51 @@ fun ProfileScreen(
                 Text("AASRA v1.0.0", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+
+
+    if (contactToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { contactToDelete = null },
+            title = { Text("Remove Contact?") },
+            text = { Text("Are you sure you want to remove ${contactToDelete?.name} from your emergency contacts?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        contactToDelete?.let { viewModel.removeContact(it) }
+                        contactToDelete = null
+                        Toast.makeText(context, "Contact Removed", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { contactToDelete = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (locationToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { locationToDelete = null },
+            title = { Text("Delete Location?") },
+            text = { Text("Are you sure you want to delete '${locationToDelete?.name}' from your safe locations?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        locationToDelete?.let { viewModel.removeSafeLocation(it) }
+                        locationToDelete = null
+                        Toast.makeText(context, "Location Deleted", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { locationToDelete = null }) { Text("Cancel") }
+            }
+        )
     }
 }
 
