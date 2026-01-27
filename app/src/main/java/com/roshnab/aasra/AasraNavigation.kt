@@ -11,6 +11,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.roshnab.aasra.auth.AuthScreen
 import com.roshnab.aasra.data.ProfileViewModel
 import com.roshnab.aasra.screens.DonationScreen
+import com.roshnab.aasra.screens.EditProfileScreen
 import com.roshnab.aasra.screens.HomeScreen
 import com.roshnab.aasra.screens.LocationPickerScreen
 import com.roshnab.aasra.screens.ProfileScreen
@@ -68,6 +69,18 @@ fun AasraNavigation(
                 onAddLocationClick = {
                     navController.navigate("location_picker")
                 },
+                onEditProfileClick = { navController.navigate("edit_profile") },
+                viewModel = profileViewModel
+            )
+        }
+
+        composable("edit_profile") {
+            val profileViewModel: ProfileViewModel = viewModel(
+                viewModelStoreOwner = navController.getBackStackEntry("profile")
+            )
+
+            EditProfileScreen(
+                onBackClick = { navController.popBackStack() },
                 viewModel = profileViewModel
             )
         }

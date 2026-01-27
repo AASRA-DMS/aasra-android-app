@@ -177,4 +177,40 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         uiState = uiState.copy(safeLocations = currentList)
         db.collection("users").document(user.uid).update("safeLocations", currentList)
     }
+
+    fun updateUserName(newName: String, onResult: (Boolean) -> Unit) {
+        val user = auth.currentUser ?: return
+
+        viewModelScope.launch {
+            try {
+                val profileUpdates = com.google.firebase.auth.UserProfileChangeRequest.Builder()
+                    .setDisplayName(newName)
+                    .build()
+                user.updateProfile(profileUpdates).await()
+
+                db.collection("users").document(user.uid)
+                    .update("name", newName)
+                    .await()
+
+                uiState = uiState.copy(name = newName)
+                onResult(true)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onResult(false)
+            }
+        }
+    }
+
+    fun updateUserPassword(newPass: String, onResult: (Boolean, String?) -> Unit) {
+        val user = auth.currentUser ?: return
+
+        user.updatePassword(newPass)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    onResult(true, null)
+                } else {
+                    onResult(false, task.exception?.message)
+                }
+            }
+    }
 }
