@@ -89,7 +89,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
                 val allDonations = DonationRepository.fetchDonations()
                 val userTotal = allDonations
-                    .filter { it.name.equals(name, ignoreCase = true) }
+                    .filter { it.email.equals(email, ignoreCase = true) }
                     .sumOf { it.amount }
 
                 uiState = uiState.copy(

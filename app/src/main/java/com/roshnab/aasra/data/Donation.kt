@@ -6,7 +6,8 @@ data class Donation(
     val name: String,
     val amount: Int,
     val date: String,
-    val isAnonymous: Boolean
+    val isAnonymous: Boolean,
+    val email: String = ""
 ) {
     val tier: DonationTier
         get() = when {
