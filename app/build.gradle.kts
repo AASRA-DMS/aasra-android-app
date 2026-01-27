@@ -57,6 +57,7 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.androidx.compose.animation.core.lint)
     implementation(libs.androidx.navigation.common.ktx)
+    implementation(libs.firebase.firestore)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

@@ -25,16 +25,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.roshnab.aasra.data.ProfileViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     onBackClick: () -> Unit,
-    onLogoutClick: () -> Unit
+    onLogoutClick: () -> Unit,
+    viewModel: ProfileViewModel = viewModel()
 ) {
     val context = LocalContext.current
+    val state = viewModel.uiState // Get Real Data
 
-    // Local State (Visual only for now)
     var isDarkTheme by remember { mutableStateOf(false) }
     var areNotificationsEnabled by remember { mutableStateOf(true) }
     var currentLanguage by remember { mutableStateOf("English") }
@@ -53,58 +56,62 @@ fun ProfileScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
 
-            // 1. IDENTITY
-            ProfileHeaderSection(name = "Roshnab Afraz", email = "roshnab@aasra.com", totalDonated = 25000)
-
-            // 2. SAFETY
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionTitle("Safety & Emergency")
-                SettingsItem(Icons.Filled.ContactPhone, "Emergency Contacts", "Manage trusted contacts") {
-                    Toast.makeText(context, "Feature coming soon", Toast.LENGTH_SHORT).show()
-                }
-                SettingsItem(Icons.Filled.Home, "Safe Locations", "Set Home & Work for auto-alerts") {
-                    Toast.makeText(context, "Feature coming soon", Toast.LENGTH_SHORT).show()
-                }
+        if (state.isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
             }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
 
-            // 3. PREFERENCES
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionTitle("App Preferences")
-                ToggleItem(Icons.Filled.Notifications, "Flood Alerts", areNotificationsEnabled) { areNotificationsEnabled = it }
-                ToggleItem(Icons.Filled.DarkMode, "Dark Mode", isDarkTheme) { isDarkTheme = it }
-                SettingsItem(Icons.Filled.Language, "Language", currentLanguage) {
-                    currentLanguage = if (currentLanguage == "English") "Urdu" else "English"
+                ProfileHeaderSection(
+                    name = state.name,
+                    email = state.email,
+                    totalDonated = state.totalDonated
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionTitle("Safety & Emergency")
+                    SettingsItem(Icons.Filled.ContactPhone, "Emergency Contacts", "Manage trusted contacts") {
+                        Toast.makeText(context, "Feature coming soon", Toast.LENGTH_SHORT).show()
+                    }
+                    SettingsItem(Icons.Filled.Home, "Safe Locations", "Set Home & Work for auto-alerts") {
+                        Toast.makeText(context, "Feature coming soon", Toast.LENGTH_SHORT).show()
+                    }
                 }
-            }
 
-            // 4. SUPPORT
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionTitle("Account & Support")
-                SettingsItem(Icons.Filled.Edit, "Edit Profile", "Change name or password") { }
-                SettingsItem(Icons.Outlined.Feedback, "Send Feedback", "Help us improve AASRA") {
-                    sendFeedbackEmail(context)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionTitle("App Preferences")
+                    ToggleItem(Icons.Filled.Notifications, "Flood Alerts", areNotificationsEnabled) { areNotificationsEnabled = it }
+                    ToggleItem(Icons.Filled.DarkMode, "Dark Mode", isDarkTheme) { isDarkTheme = it }
+                    SettingsItem(Icons.Filled.Language, "Language", currentLanguage) {
+                        currentLanguage = if (currentLanguage == "English") "Urdu" else "English"
+                    }
                 }
-                LogoutItem(onLogoutClick)
-            }
 
-            // Footer
-            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                Text("AASRA v1.0.0", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionTitle("Account & Support")
+                    SettingsItem(Icons.Filled.Edit, "Edit Profile", "Change name or password") { }
+                    SettingsItem(Icons.Outlined.Feedback, "Send Feedback", "Help us improve AASRA") {
+                        sendFeedbackEmail(context)
+                    }
+                    LogoutItem(onLogoutClick)
+                }
+
+                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                    Text("AASRA v1.0.0", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }
 }
-
-// --- REUSABLE COMPONENTS ---
 
 @Composable
 fun ProfileHeaderSection(name: String, email: String, totalDonated: Int) {
