@@ -1,4 +1,4 @@
-package com.roshnab.aasra.navigation
+package com.roshnab.aasra
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavType
@@ -12,12 +12,13 @@ import com.roshnab.aasra.screens.ProfileScreen
 import com.roshnab.aasra.screens.ReportScreen
 import com.google.firebase.auth.FirebaseAuth
 import com.roshnab.aasra.auth.AuthScreen
+import com.roshnab.aasra.screens.SplashScreen
 
 @Composable
 fun AasraNavigation() {
     val navController = rememberNavController()
 
-    NavHost(navController = navController, startDestination = "auth") {
+    NavHost(navController = navController, startDestination = "splash") {
 
         // 1. AUTH SCREEN
         composable("auth") {
@@ -26,6 +27,10 @@ fun AasraNavigation() {
                     popUpTo("auth") { inclusive = true }
                 }
             })
+        }
+
+        composable("splash") {
+            SplashScreen(navController = navController)
         }
 
         // 2. HOME SCREEN
