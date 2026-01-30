@@ -6,10 +6,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.lifecycle.viewmodel.compose.viewModel // Import for viewModel()
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.firebase.auth.FirebaseAuth
-import com.roshnab.aasra.auth.AuthScreen
 import com.roshnab.aasra.data.ProfileViewModel
+import com.roshnab.aasra.screens.AuthScreen
 import com.roshnab.aasra.screens.DonationScreen
 import com.roshnab.aasra.screens.EditProfileScreen
 import com.roshnab.aasra.screens.HelpSupportScreen

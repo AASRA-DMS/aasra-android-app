@@ -1,87 +1,55 @@
-package com.roshnab.aasra.auth
+package com.roshnab.aasra.screens
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.widget.Toast
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseUser
-import com.google.firebase.auth.GoogleAuthProvider
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-class AuthViewModel : ViewModel() {
-    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
-    val authState: StateFlow<AuthState> = _authState.asStateFlow()
+    private val auth = FirebaseAuth.getInstance()
+    private val db = FirebaseFirestore.getInstance()
+    private val context = application.applicationContext
 
-    init {
-        // Auto-login check
-        val currentUser = auth.currentUser
-        if (currentUser != null) {
-            _authState.value = AuthState.Success(currentUser)
-        }
-    }
-
-    fun login(email: String, pass: String) {
-        if (email.isBlank() || pass.isBlank()) {
-            _authState.value = AuthState.Error("Please fill in all fields")
-            return
-        }
-
+    fun signUp(
+        email: String,
+        pass: String,
+        name: String,
+        phone: String,
+        role: String,
+        skills: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
         viewModelScope.launch {
-            _authState.value = AuthState.Loading
             try {
-                val result = auth.signInWithEmailAndPassword(email, pass).await()
-                _authState.value = AuthState.Success(result.user)
+                val authResult = auth.createUserWithEmailAndPassword(email, pass).await()
+                val user = authResult.user
+
+                if (user != null) {
+                    val userData = hashMapOf(
+                        "uid" to user.uid,
+                        "name" to name,
+                        "email" to email,
+                        "phone" to phone,
+                        "role" to role,
+                        "skills" to skills,
+                        "createdAt" to System.currentTimeMillis()
+                    )
+
+
+                    db.collection("users").document(user.uid).set(userData).await()
+
+                    Toast.makeText(context, "Welcome, $name!", Toast.LENGTH_SHORT).show()
+                    onSuccess()
+                }
             } catch (e: Exception) {
-                _authState.value = AuthState.Error(e.message ?: "Login Failed")
+                onError(e.message ?: "Signup Failed")
             }
         }
     }
-
-    fun signUp(email: String, pass: String) {
-        if (email.isBlank() || pass.isBlank()) {
-            _authState.value = AuthState.Error("Please fill in all fields")
-            return
-        }
-
-        viewModelScope.launch {
-            _authState.value = AuthState.Loading
-            try {
-                val result = auth.createUserWithEmailAndPassword(email, pass).await()
-                // Optional: Send verification email here
-                _authState.value = AuthState.Success(result.user)
-            } catch (e: Exception) {
-                _authState.value = AuthState.Error(e.message ?: "Sign Up Failed")
-            }
-        }
-    }
-
-    fun signInWithGoogle(idToken: String) {
-        viewModelScope.launch {
-            _authState.value = AuthState.Loading
-            try {
-                // Exchange the Google ID token for a Firebase Credential
-                val credential = GoogleAuthProvider.getCredential(idToken, null)
-                val result = auth.signInWithCredential(credential).await()
-                _authState.value = AuthState.Success(result.user)
-            } catch (e: Exception) {
-                _authState.value = AuthState.Error(e.message ?: "Google Sign-In Failed")
-            }
-        }
-    }
-
-    fun resetState() {
-        _authState.value = AuthState.Idle
-    }
-}
-
-sealed class AuthState {
-    object Idle : AuthState()
-    object Loading : AuthState()
-    data class Success(val user: FirebaseUser?) : AuthState()
-    data class Error(val message: String) : AuthState()
 }
