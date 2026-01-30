@@ -19,18 +19,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.navigation.NavController
-import com.google.firebase.auth.FirebaseAuth
 import com.roshnab.aasra.R
 import kotlinx.coroutines.delay
 
 @Composable
-fun SplashScreen(navController: NavController) {
+fun SplashScreen(onSplashFinished: () -> Unit) {
     val scale = remember { Animatable(0f) }
     val alpha = remember { Animatable(0f) }
 
     LaunchedEffect(key1 = true) {
-
+        // 1. Start Animation
         scale.animateTo(
             targetValue = 1f,
             animationSpec = tween(
@@ -44,14 +42,8 @@ fun SplashScreen(navController: NavController) {
             animationSpec = tween(durationMillis = 500)
         )
 
-        delay(1000L)
-
-        val currentUser = FirebaseAuth.getInstance().currentUser
-        val destination = if (currentUser != null) "home" else "auth"
-
-        navController.navigate(destination) {
-            popUpTo("splash") { inclusive = true }
-        }
+        delay(1500L)
+        onSplashFinished()
     }
 
     Box(

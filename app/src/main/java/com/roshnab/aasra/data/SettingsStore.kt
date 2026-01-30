@@ -5,22 +5,29 @@ import android.content.SharedPreferences
 
 object SettingsStore {
     private const val PREF_NAME = "aasra_settings"
+    private const val KEY_DARK_MODE = "dark_mode"
+    private const val KEY_IS_MANUAL = "is_manual_theme" // To know if user manually changed it
+
     private lateinit var prefs: SharedPreferences
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
     }
 
-    fun getDarkMode(systemDefault: Boolean): Boolean {
-        // If "dark_mode" key exists, use it. Otherwise, use the systemDefault.
-        return if (prefs.contains("dark_mode")) {
-            prefs.getBoolean("dark_mode", false)
+    fun getDarkMode(systemIsDark: Boolean): Boolean {
+        return if (prefs.contains(KEY_DARK_MODE)) {
+            prefs.getBoolean(KEY_DARK_MODE, false)
         } else {
-            systemDefault
+            systemIsDark
         }
     }
 
     var isDarkMode: Boolean
-        get() = prefs.getBoolean("dark_mode", false)
-        set(value) = prefs.edit().putBoolean("dark_mode", value).apply()
+        get() = prefs.getBoolean(KEY_DARK_MODE, false)
+        set(value) {
+            prefs.edit()
+                .putBoolean(KEY_DARK_MODE, value)
+                .putBoolean(KEY_IS_MANUAL, true) // Mark that user made a choice
+                .apply()
+        }
 }

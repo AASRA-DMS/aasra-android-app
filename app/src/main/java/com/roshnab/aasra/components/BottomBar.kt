@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
@@ -25,10 +26,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-// Define Navigation Items
 enum class BottomNavScreen(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Filled.Home),
     Donations("Donations", Icons.Filled.Favorite),
+    Requests("Requests", Icons.AutoMirrored.Filled.List), // <--- New Item
     Safety("Safety", Icons.Filled.Security),
     Profile("Profile", Icons.Filled.Person)
 }
@@ -36,13 +37,13 @@ enum class BottomNavScreen(val label: String, val icon: ImageVector) {
 @Composable
 fun AasraBottomBar(
     currentScreen: BottomNavScreen,
+    items: List<BottomNavScreen>,
     onScreenSelected: (BottomNavScreen) -> Unit
 ) {
-    // 1. Outer Container (The Main Bar)
     Surface(
         modifier = Modifier
             .padding(bottom = 24.dp, start = 16.dp, end = 16.dp)
-            .height(80.dp) // Total Height
+            .height(80.dp)
             .shadow(
                 elevation = 8.dp,
                 shape = CircleShape,
@@ -54,11 +55,11 @@ fun AasraBottomBar(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp), // Side padding for the whole row
-            horizontalArrangement = Arrangement.SpaceBetween, // Pushes items to fill space
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BottomNavScreen.values().forEach { screen ->
+            items.forEach { screen ->
                 FluidBottomNavItem(
                     screen = screen,
                     isSelected = screen == currentScreen,
@@ -75,7 +76,6 @@ fun FluidBottomNavItem(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    // 2. Smooth Color Transitions
     val backgroundColor by animateColorAsState(
         targetValue = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
         animationSpec = spring(stiffness = Spring.StiffnessLow)
@@ -85,18 +85,17 @@ fun FluidBottomNavItem(
         targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    // 3. The Inner Pill (Selection)
     Box(
         modifier = Modifier
-            .height(56.dp) // Fixed height to match concentric spacing (80dp - 56dp = 24dp / 2 = 12dp padding)
-            .clip(CircleShape) // Ensures the inner pill matches the outer curve
+            .height(56.dp)
+            .clip(CircleShape)
             .background(backgroundColor)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             )
-            .animateContentSize( // Smoothly animates width expansion
+            .animateContentSize(
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = Spring.StiffnessMediumLow
@@ -105,7 +104,7 @@ fun FluidBottomNavItem(
         contentAlignment = Alignment.Center
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 20.dp), // Inner padding for text/icon
+            modifier = Modifier.padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
