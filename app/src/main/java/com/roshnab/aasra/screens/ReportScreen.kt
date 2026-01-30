@@ -1,194 +1,115 @@
 package com.roshnab.aasra.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.google.firebase.auth.FirebaseAuth
+import com.roshnab.aasra.data.Report
+import com.roshnab.aasra.data.ReportRepository
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReportScreen(
-    latitude: Double,
-    longitude: Double,
-    onBackClick: () -> Unit,
-    onSubmitClick: () -> Unit
-) {
-    // Form State
+fun ReportScreen(onBackClick: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var category by remember { mutableStateOf("Medical") }
     var description by remember { mutableStateOf("") }
-    var affectedCount by remember { mutableStateOf(1) }
-    var selectedType by remember { mutableStateOf("Flood") }
-    var contactNumber by remember { mutableStateOf("") }
+    var age by remember { mutableStateOf("") } // NEW
+    var isSubmitting by remember { mutableStateOf(false) }
+
+    val currentLat = 31.5204
+    val currentLng = 74.3587
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Report Incident", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                title = { Text("Report Disaster") },
+                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Filled.ArrowBack, "Back") } }
             )
         }
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            modifier = Modifier.padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Text("Please provide details so we can help you.", style = MaterialTheme.typography.bodyMedium)
 
-            // 1. LOCATION CARD
-            LocationCard(latitude, longitude)
-
-            // 2. INCIDENT TYPE
-            Text("What is happening?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                IncidentTypeItem("Flood", Icons.Filled.WaterDrop, selectedType == "Flood") { selectedType = "Flood" }
-                IncidentTypeItem("Fire", Icons.Filled.LocalFireDepartment, selectedType == "Fire") { selectedType = "Fire" }
-                IncidentTypeItem("Medical", Icons.Filled.MedicalServices, selectedType == "Medical") { selectedType = "Medical" }
-                IncidentTypeItem("Other", Icons.Filled.Warning, selectedType == "Other") { selectedType = "Other" }
+            Text("Category", style = MaterialTheme.typography.titleSmall)
+            Row {
+                listOf("Medical", "Rescue", "Food", "Shelter").forEach { cat ->
+                    FilterChip(
+                        selected = category == cat,
+                        onClick = { category = cat },
+                        label = { Text(cat) },
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                }
             }
 
-            // 3. PEOPLE AFFECTED
-            Text("People Affected?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            PeopleCounter(count = affectedCount, onCountChange = { affectedCount = it })
+            OutlinedTextField(
+                value = age,
+                onValueChange = { age = it },
+                label = { Text("Patient/Victim Age") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
 
-            // 4. ADD PHOTO
-            OutlinedButton(
-                onClick = { /* TODO: Open Camera */ },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Outlined.PhotoCamera, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Add Photo / Video Evidence")
-            }
-
-            // 5. DESCRIPTION
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
-                label = { Text("Describe the situation (Optional)") },
-                modifier = Modifier.fillMaxWidth().height(120.dp),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            // 6. CONTACT
-            OutlinedTextField(
-                value = contactNumber,
-                onValueChange = { contactNumber = it },
-                label = { Text("Your Phone Number") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                label = { Text("Description (e.g. Need Insulin)") },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                leadingIcon = { Icon(Icons.Filled.Phone, null) }
+                minLines = 3
             )
 
-            Spacer(Modifier.height(16.dp))
-
-            // 7. SUBMIT BUTTON
             Button(
-                onClick = onSubmitClick,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                shape = RoundedCornerShape(16.dp)
+                onClick = {
+                    if (description.isBlank() || age.isBlank()) {
+                        Toast.makeText(context, "Please fill all fields", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    isSubmitting = true
+                    scope.launch {
+                        val user = FirebaseAuth.getInstance().currentUser
+                        val report = Report(
+                            victimId = user?.uid ?: "",
+                            victimName = user?.displayName ?: "Unknown",
+                            victimPhone = user?.phoneNumber ?: "",
+                            victimAge = age,
+                            category = category,
+                            description = description,
+                            locationLat = currentLat,
+                            locationLng = currentLng,
+                            status = "pending"
+                        )
+
+                        val success = ReportRepository.submitReport(report)
+                        isSubmitting = false
+                        if (success) {
+                            Toast.makeText(context, "Report Submitted!", Toast.LENGTH_LONG).show()
+                            onBackClick()
+                        } else {
+                            Toast.makeText(context, "Failed to submit", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isSubmitting
             ) {
-                Text("SUBMIT REPORT", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(if (isSubmitting) "Sending..." else "Send SOS Request")
             }
-        }
-    }
-}
-
-// --- HELPER COMPONENTS ---
-
-@Composable
-fun LocationCard(lat: Double, lng: Double) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(16.dp))
-            Column {
-                Text("Location Detected", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                Text("${lat.toString().take(7)}, ${lng.toString().take(7)}", fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
-fun IncidentTypeItem(name: String, icon: ImageVector, isSelected: Boolean, onClick: () -> Unit) {
-    val backgroundColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-    val iconColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { onClick() }
-    ) {
-        Box(
-            modifier = Modifier
-                .size(60.dp)
-                .clip(CircleShape)
-                .background(backgroundColor),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription = name, tint = iconColor, modifier = Modifier.size(28.dp))
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(name, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-    }
-}
-
-@Composable
-fun PeopleCounter(count: Int, onCountChange: (Int) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, Color.Gray.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-            .padding(12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = { if (count > 1) onCountChange(count - 1) }) {
-            Icon(Icons.Filled.Remove, null)
-        }
-        Text("$count Person(s)", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        IconButton(onClick = { onCountChange(count + 1) }) {
-            Icon(Icons.Filled.Add, null)
         }
     }
 }
