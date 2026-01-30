@@ -19,6 +19,7 @@ data class ProfileUiState(
     val isLoading: Boolean = true,
     val name: String = "",
     val email: String = "",
+    val role: String = "victim",
     val totalDonated: Int = 0,
     val emergencyContacts: List<EmergencyContact> = emptyList(),
     val safeLocations: List<SafeLocation> = emptyList(),
@@ -56,6 +57,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             if (user != null) {
                 var name = user.displayName ?: "AASRA User"
                 val email = user.email ?: ""
+                var role = "victim" // Default
                 var contacts = emptyList<EmergencyContact>()
                 var locations = emptyList<SafeLocation>()
                 var notifPref = true
@@ -65,6 +67,9 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                     if (snapshot.exists()) {
                         val fsName = snapshot.getString("name")
                         if (!fsName.isNullOrBlank()) name = fsName
+
+                        val fsRole = snapshot.getString("role")
+                        if (!fsRole.isNullOrBlank()) role = fsRole
 
                         val fsContacts = snapshot.get("emergencyContacts") as? List<Map<String, String>>
                         contacts = fsContacts?.map {
@@ -96,6 +101,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                     isLoading = false,
                     name = name,
                     email = email,
+                    role = role,
                     totalDonated = userTotal,
                     emergencyContacts = contacts,
                     safeLocations = locations,

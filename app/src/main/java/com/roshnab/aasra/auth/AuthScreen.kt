@@ -81,7 +81,14 @@ fun AuthScreen(
                     is CustomCredential -> {
                         if (credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                             val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                            // viewModel.signInWithGoogle(googleIdTokenCredential.idToken)
+
+                            viewModel.signInWithGoogle(
+                                idToken = googleIdTokenCredential.idToken,
+                                onSuccess = onAuthSuccess,
+                                onError = { error ->
+                                    Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                                }
+                            )
                         }
                     }
                     else -> Log.e("Auth", "Unknown credential type")
@@ -182,7 +189,24 @@ fun LoginContent(
         Spacer(modifier = Modifier.height(24.dp))
 
         AasraButton(text = "Log In", isLoading = isLoading) {
-            Toast.makeText(context, "Login Clicked", Toast.LENGTH_SHORT).show()
+            if (email.isBlank() || password.isBlank()) {
+                Toast.makeText(context, "Please enter email and password", Toast.LENGTH_SHORT).show()
+                return@AasraButton
+            }
+
+            isLoading = true
+            viewModel.login(
+                email = email,
+                pass = password,
+                onSuccess = {
+                    isLoading = false
+                    onSuccess() // Navigate to Home
+                },
+                onError = { error ->
+                    isLoading = false
+                    Toast.makeText(context, "Error: $error", Toast.LENGTH_LONG).show()
+                }
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
