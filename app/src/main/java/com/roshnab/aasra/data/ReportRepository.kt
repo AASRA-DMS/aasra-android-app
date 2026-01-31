@@ -16,7 +16,7 @@ object ReportRepository {
         return try {
             val docRef = reportsCollection.document()
             val finalReport = report.copy(reportId = docRef.id)
-            docRef.set(finalReport).await() // Ensure you have the play-services-coroutines lib or use tasks.await()
+            docRef.set(finalReport).await()
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -24,6 +24,7 @@ object ReportRepository {
         }
     }
 
+    // Fetches live reports for the Volunteer Map
     fun getOpenReportsFlow(): Flow<List<Report>> = callbackFlow {
         val query = reportsCollection
             .whereIn("status", listOf("pending", "verified"))
