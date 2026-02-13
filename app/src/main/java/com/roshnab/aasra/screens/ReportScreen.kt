@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Water
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,7 +29,9 @@ import androidx.compose.ui.unit.sp
 import com.google.firebase.auth.FirebaseAuth
 import com.roshnab.aasra.data.Report
 import com.roshnab.aasra.data.ReportRepository
+import com.roshnab.aasra.data.RiverRepository
 import kotlinx.coroutines.launch
+import kotlin.math.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,10 +49,35 @@ fun ReportScreen(
     var affectedCount by remember { mutableStateOf(1) }
     var selectedType by remember { mutableStateOf("Medical") }
     var contactNumber by remember { mutableStateOf("") }
+    var nearestBarrageInfo by remember { mutableStateOf("Calculating risk...") }
 
     var isSubmitting by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    // 1. Calculate Distance to Nearest Barrage (Danger Zone)
+    LaunchedEffect(latitude, longitude) {
+        val barrages = RiverRepository.getBarrages()
+        var minDistance = Double.MAX_VALUE
+        var nearestName = ""
+
+        barrages.forEach { barrage ->
+            // RENAMED FUNCTION CALL HERE TO FIX CONFLICT
+            val dist = calculateRiskDistance(
+                latitude, longitude,
+                barrage.location.latitude, barrage.location.longitude
+            )
+            if (dist < minDistance) {
+                minDistance = dist
+                nearestName = barrage.name
+            }
+        }
+
+        nearestBarrageInfo = if (minDistance < 1.0) {
+            "${String.format("%.0f", minDistance * 1000)}m from $nearestName"
+        } else {
+            "${String.format("%.1f", minDistance)} km from $nearestName"
+        }
+
+        // Auto-fill phone number
         val user = FirebaseAuth.getInstance().currentUser
         if (user?.phoneNumber != null) {
             contactNumber = user.phoneNumber ?: ""
@@ -79,7 +107,8 @@ fun ReportScreen(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            LocationCard(latitude, longitude)
+            // Location Card showing Distance to River
+            LocationCard(latitude, longitude, nearestBarrageInfo)
 
             Text("What do you need?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Row(
@@ -147,7 +176,7 @@ fun ReportScreen(
                     scope.launch {
                         val user = FirebaseAuth.getInstance().currentUser
 
-                        val finalDesc = "$description\n[Affected: $affectedCount people]"
+                        val finalDesc = "$description\n[Affected: $affectedCount people]\n[Near: $nearestBarrageInfo]"
 
                         val report = Report(
                             victimId = user?.uid ?: "",
@@ -189,23 +218,44 @@ fun ReportScreen(
     }
 }
 
+// --- RENAMED Helper Function to Avoid Conflict ---
+private fun calculateRiskDistance(startLat: Double, startLng: Double, endLat: Double, endLng: Double): Double {
+    val earthRadius = 6371.0 // Radius in KM
+    val dLat = Math.toRadians(endLat - startLat)
+    val dLng = Math.toRadians(endLng - startLng)
+    val a = sin(dLat / 2) * sin(dLat / 2) +
+            cos(Math.toRadians(startLat)) * cos(Math.toRadians(endLat)) *
+            sin(dLng / 2) * sin(dLng / 2)
+    val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return earthRadius * c
+}
 
 @Composable
-fun LocationCard(lat: Double, lng: Double) {
+fun LocationCard(lat: Double, lng: Double, nearestInfo: String) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(16.dp))
-            Column {
-                Text("Current Location", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                Text("${String.format("%.5f", lat)}, ${String.format("%.5f", lng)}", fontWeight = FontWeight.Bold)
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(16.dp))
+                Column {
+                    Text("Selected Location", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                    Text("${String.format("%.5f", lat)}, ${String.format("%.5f", lng)}", fontWeight = FontWeight.Bold)
+                }
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Water, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.width(16.dp))
+                Column {
+                    Text("Proximity to Risk", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                    Text(nearestInfo, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                }
             }
         }
     }

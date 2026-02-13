@@ -1,15 +1,48 @@
 package com.roshnab.aasra.data
 
 import org.osmdroid.util.GeoPoint
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+// Note: No API Models or Interfaces here. They are safely stored in your FloodApiModels.kt and OpenMeteoApi.kt!
 
 object RiverRepository {
 
-    // 1. PUBLIC ACCESSOR
+    // 1. API SETUP
+    private val retrofit = Retrofit.Builder()
+        .baseUrl("https://flood-api.open-meteo.com/")
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+
+    private val floodApi = retrofit.create(OpenMeteoApi::class.java)
+
+    // 2. FETCH LIVE DATA
+    suspend fun getLiveFloodRisk(lat: Double, lng: Double): String {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = floodApi.getRiverDischarge(lat, lng)
+                val todayDischarge = response.daily.riverDischarge.firstOrNull() ?: 0.0
+
+                when {
+                    todayDischarge > 10000.0 -> "HIGH RISK (${todayDischarge} m³/s)"
+                    todayDischarge > 5000.0 -> "WARNING (${todayDischarge} m³/s)"
+                    else -> "NORMAL (${todayDischarge} m³/s)"
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                "DATA UNAVAILABLE"
+            }
+        }
+    }
+
+    // 3. PUBLIC ACCESSOR
     fun getRiverPolygons(): List<List<GeoPoint>> {
         return getOriginalRiverPolygons() + getRiverJoints()
     }
 
-    // 2. THE BARRAGES (Updated with Real Data)
+    // 4. THE BARRAGES
     fun getBarrages(): List<Barrage> {
         return listOf(
             Barrage("Kotri", "Indus River", "15 m", GeoPoint(25.4428, 68.3151), "12,312 (Rising)", "2,177 (Rising)", "NORMAL"),
@@ -40,7 +73,7 @@ object RiverRepository {
         )
     }
 
-    // 3. BASIN
+    // 5. BASIN
     fun getRiverBasin(): List<GeoPoint> {
         return listOf(
             GeoPoint(35.75, 74.85), GeoPoint(35.60, 73.10), GeoPoint(35.30, 71.50),
@@ -56,7 +89,7 @@ object RiverRepository {
         )
     }
 
-    // 4. JOINTS
+    // 6. JOINTS
     private fun getRiverJoints(): List<List<GeoPoint>> {
         return listOf(
             listOf(GeoPoint(35.3913, 74.3626), GeoPoint(35.3976, 74.3891), GeoPoint(35.3971, 74.3798), GeoPoint(35.4004, 74.3708)),
@@ -78,7 +111,7 @@ object RiverRepository {
         )
     }
 
-    // 5. ORIGINAL
+    // 7. ORIGINAL
     private fun getOriginalRiverPolygons(): List<List<GeoPoint>> {
         return listOf(
             listOf(GeoPoint(35.366, 75.556), GeoPoint(35.473, 75.344), GeoPoint(35.574, 75.079), GeoPoint(35.793, 74.651), GeoPoint(35.456, 74.536), GeoPoint(35.397, 74.38), GeoPoint(35.494, 74.581), GeoPoint(35.732, 74.62), GeoPoint(35.734, 74.768), GeoPoint(35.596, 75.081), GeoPoint(35.585, 75.34), GeoPoint(35.463, 75.434), GeoPoint(35.366, 75.556)),

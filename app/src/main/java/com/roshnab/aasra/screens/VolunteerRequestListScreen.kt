@@ -1,5 +1,8 @@
 package com.roshnab.aasra.screens
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -8,73 +11,101 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Fastfood
-import androidx.compose.material.icons.filled.HealthAndSafety
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.roshnab.aasra.data.Report
 import com.roshnab.aasra.data.ReportRepository
+import org.osmdroid.util.GeoPoint
 import java.util.Date
+import java.util.regex.Pattern
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VolunteerRequestListScreen() {
-    val reportsState = ReportRepository.getOpenReportsFlow().collectAsState(initial = emptyList())
-    val reports = reportsState.value
+fun VolunteerRequestListScreen(volunteerLocation: GeoPoint?) {
+    // 1. Fetch Reports
+    val activeReports by ReportRepository.getOpenReportsFlow().collectAsState(initial = emptyList())
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-    ) {
-        // Header
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(
-                text = "Nearby Requests",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = "Real-time SOS signals from victims",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+    // 2. Sort by Distance (Nearest first)
+    val sortedReports = remember(activeReports, volunteerLocation) {
+        if (volunteerLocation == null) {
+            activeReports // No location, show as is
+        } else {
+            activeReports.sortedBy { report ->
+                calculateDist(
+                    volunteerLocation.latitude, volunteerLocation.longitude,
+                    report.locationLat, report.locationLng
+                )
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("Urgent Requests", fontWeight = FontWeight.Bold)
+                        if (volunteerLocation != null) {
+                            Text(
+                                "Sorted by nearest location",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { /* Refresh logic if needed */ }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp)
+                )
             )
         }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .background(MaterialTheme.colorScheme.background)
+                .padding(horizontal = 16.dp)
+        ) {
 
-        if (reports.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.CheckCircle, null, modifier = Modifier.size(64.dp), tint = Color.LightGray)
-                    Spacer(Modifier.height(16.dp))
-                    Text("All clear! No pending requests.", color = Color.Gray)
-                }
+            if (volunteerLocation == null) {
+                LocationWarningCard()
+                Spacer(modifier = Modifier.height(16.dp))
             }
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(
-                    top = 8.dp,
-                    start = 16.dp,
-                    end = 16.dp,
-                    bottom = 120.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(reports) { report ->
-                    AestheticRequestCard(report)
+
+            if (sortedReports.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(64.dp), tint = Color.Green)
+                        Spacer(Modifier.height(16.dp))
+                        Text("No active SOS requests!", style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(bottom = 100.dp), // Space for bottom bar
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(sortedReports) { report ->
+                        ReportItemCard(report = report, volunteerLocation = volunteerLocation)
+                    }
                 }
             }
         }
@@ -82,146 +113,256 @@ fun VolunteerRequestListScreen() {
 }
 
 @Composable
-fun AestheticRequestCard(report: Report) {
+fun ReportItemCard(report: Report, volunteerLocation: GeoPoint?) {
+    val context = LocalContext.current
+
+    // --- Data Parsing ---
+
+    // 1. Calculate Distance
+    val distanceInfo = if (volunteerLocation != null && report.locationLat != 0.0) {
+        val dist = calculateDist(
+            volunteerLocation.latitude, volunteerLocation.longitude,
+            report.locationLat, report.locationLng
+        )
+        if (dist < 1.0) "${String.format("%.0f", dist * 1000)} m" else "${String.format("%.1f", dist)} km"
+    } else {
+        "-- km"
+    }
+
+    // 2. Time Ago
+    val timeAgo = getRelativeTime(report.timestamp)
+
+    // 3. Extract Affected Count & Clean Description
+    // We look for the string "[Affected: X people]" which we saved earlier
+    val affectedMatcher = Pattern.compile("\\[Affected: (\\d+) people\\]").matcher(report.description)
+    val affectedCount = if (affectedMatcher.find()) affectedMatcher.group(1) else "1"
+
+    // Remove the [Affected...] tag from the visible description text to keep it clean
+    val cleanDescription = report.description.replace("\\[Affected:.*?\\]".toRegex(), "").trim()
+    val finalDescription = if (cleanDescription.isBlank()) "No additional details provided." else cleanDescription
+
+
+    // --- UI Colors ---
+    val categoryColor = when(report.category) {
+        "Medical" -> MaterialTheme.colorScheme.error
+        "Flood" -> Color(0xFF1E88E5) // Blue
+        "Food" -> Color(0xFF43A047) // Green
+        else -> MaterialTheme.colorScheme.secondary
+    }
+
     Card(
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp), // Flat & Clean
         shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
 
-            // Row 1: Category Badge & Time
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CategoryBadge(report.category)
-                Spacer(Modifier.weight(1f))
-                Icon(Icons.Filled.AccessTime, null, modifier = Modifier.size(14.dp), tint = Color.Gray)
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    text = getRelativeTime(report.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // Row 2: Main Content
-            Text(
-                text = report.description,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            // Row 3: Victim Details (With nice divider)
-            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-            Spacer(Modifier.height(12.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Victim Avatar Placeholder
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.secondaryContainer),
-                    contentAlignment = Alignment.Center
+            // --- HEADER: Category + Distance + Time ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Category Badge
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = categoryColor.copy(alpha = 0.1f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, categoryColor.copy(alpha = 0.3f))
                 ) {
                     Text(
-                        text = report.victimName.take(1).uppercase(),
+                        text = report.category.uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                        color = categoryColor,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                     )
+                }
+
+                // Distance & Time
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.NearMe, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.tertiary)
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = distanceInfo,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Spacer(Modifier.width(8.dp))
+                    Text("•", color = Color.Gray) // Dot separator
+                    Spacer(Modifier.width(8.dp))
+
+                    Icon(Icons.Outlined.Schedule, null, modifier = Modifier.size(14.dp), tint = Color.Gray)
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = timeAgo,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.Gray
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // --- BODY: Name + Affected Count + Description ---
+            Row(verticalAlignment = Alignment.Top) {
+                // Avatar Placeholder
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = report.victimName.take(1).uppercase(),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
                 }
 
                 Spacer(Modifier.width(12.dp))
 
                 Column {
-                    Text(
-                        text = report.victimName,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Age: ${report.victimAge} • Priority: ${report.priority.uppercase()}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (report.priority == "high") MaterialTheme.colorScheme.error else Color.Gray
-                    )
-                }
-
-                Spacer(Modifier.weight(1f))
-
-                // Distance Pill
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(Icons.Filled.LocationOn, null, modifier = Modifier.size(12.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("2.5 km", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = report.victimName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        // NEW: Affected People Badge
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Outlined.Group, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "$affectedCount Affected",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
                     }
+
+                    Spacer(Modifier.height(4.dp))
+
+                    Text(
+                        text = finalDescription,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
                 }
             }
 
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Spacer(Modifier.height(12.dp))
 
-            // Action Button
-            Button(
-                onClick = { /* Handle Accept */ },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                    contentColor = MaterialTheme.colorScheme.primary
-                ),
-                elevation = ButtonDefaults.buttonElevation(0.dp)
-            ) {
-                Text("Accept Request")
+            // --- FOOTER: Actions ---
+            Row(modifier = Modifier.fillMaxWidth()) {
+                // Call Button
+                OutlinedButton(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_DIAL).apply {
+                            data = Uri.parse("tel:${report.victimPhone}")
+                        }
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Phone, null, modifier = Modifier.size(18.dp))
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                // Accept & Navigate Button
+                Button(
+                    onClick = {
+                        launchGoogleMaps(context, report.locationLat, report.locationLng)
+                    },
+                    modifier = Modifier.weight(3f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Accept & Navigate")
+                    Spacer(Modifier.width(8.dp))
+                    Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(16.dp))
+                }
             }
-        }
-    }
-}
-
-@Composable
-fun CategoryBadge(category: String) {
-    val (color, icon) = when(category.lowercase()) {
-        "medical" -> MaterialTheme.colorScheme.error to Icons.Filled.HealthAndSafety
-        "food" -> Color(0xFFFFA000) to Icons.Filled.Fastfood
-        "rescue" -> MaterialTheme.colorScheme.error to Icons.Filled.Warning
-        else -> MaterialTheme.colorScheme.primary to Icons.Filled.Home
-    }
-
-    Surface(
-        color = color.copy(alpha = 0.15f),
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(
-                text = category.uppercase(),
-                color = color,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold
-            )
         }
     }
 }
 
 fun getRelativeTime(date: Date?): String {
     if (date == null) return "Just now"
-    return DateUtils.getRelativeTimeSpanString(
-        date.time,
-        System.currentTimeMillis(),
-        DateUtils.MINUTE_IN_MILLIS
-    ).toString()
+    val now = System.currentTimeMillis()
+    val time = date.time
+    val diff = now - time
+
+    return when {
+        diff < DateUtils.MINUTE_IN_MILLIS -> "Just now"
+        diff < DateUtils.HOUR_IN_MILLIS -> "${diff / DateUtils.MINUTE_IN_MILLIS} min ago"
+        diff < DateUtils.DAY_IN_MILLIS -> "${diff / DateUtils.HOUR_IN_MILLIS} hr ago"
+        else -> "${diff / DateUtils.DAY_IN_MILLIS} days ago"
+    }
+}
+
+@Composable
+fun LocationWarningCard() {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.onErrorContainer)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(
+                    "Location Unavailable",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Text(
+                    "Distances cannot be calculated. Please check map.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+    }
+}
+
+fun launchGoogleMaps(context: Context, lat: Double, lng: Double) {
+    val gmmIntentUri = Uri.parse("google.navigation:q=$lat,$lng")
+    val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
+    mapIntent.setPackage("com.google.android.apps.maps")
+
+    try {
+        context.startActivity(mapIntent)
+    } catch (e: Exception) {
+        val geoUri = Uri.parse("geo:$lat,$lng?q=$lat,$lng")
+        val fallbackIntent = Intent(Intent.ACTION_VIEW, geoUri)
+        try {
+            context.startActivity(fallbackIntent)
+        } catch (e2: Exception) {
+        }
+    }
 }

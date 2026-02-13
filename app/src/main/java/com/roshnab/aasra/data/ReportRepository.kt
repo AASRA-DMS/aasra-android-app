@@ -24,25 +24,21 @@ object ReportRepository {
         }
     }
 
-    // Fetches live reports for the Volunteer Map
     fun getOpenReportsFlow(): Flow<List<Report>> = callbackFlow {
-        val query = reportsCollection
-            .whereIn("status", listOf("pending", "verified"))
-            .orderBy("timestamp", Query.Direction.DESCENDING)
+        val query = reportsCollection.limit(50)
 
         val subscription = query.addSnapshotListener { snapshot, error ->
             if (error != null) {
-                Log.e("FIRESTORE_ERROR", "Listen failed!", error)
+                Log.e("FIRESTORE_DEBUG", "Still failing: ${error.message}", error)
                 return@addSnapshotListener
             }
 
             if (snapshot != null) {
-                try {
-                    val reports = snapshot.toObjects(Report::class.java)
-                    trySend(reports)
-                } catch (e: Exception) {
-                    Log.e("PARSING_ERROR", "Could not map data to Report object", e)
-                }
+                val reports = snapshot.toObjects(Report::class.java)
+                Log.d("FIRESTORE_DEBUG", "Success! Found ${reports.size} reports.")
+                trySend(reports)
+            } else {
+                Log.d("FIRESTORE_DEBUG", "Snapshot was null")
             }
         }
 

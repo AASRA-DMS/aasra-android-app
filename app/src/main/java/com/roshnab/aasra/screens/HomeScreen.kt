@@ -65,7 +65,6 @@ fun HomeScreen(
     var mapController by remember { mutableStateOf<IMapController?>(null) }
     var myLocationOverlay by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
 
-    // NEW: State for displaying barrage details
     var selectedBarrage by remember { mutableStateOf<Barrage?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -188,7 +187,7 @@ fun HomeScreen(
                                         title = "Barrage: ${barrage.name}"
                                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
 
-                                        // NEW: ON CLICK LISTENER
+                                        // ON CLICK LISTENER
                                         setOnMarkerClickListener { _, _ ->
                                             selectedBarrage = barrage
                                             true // Return true to consume the event (prevent default InfoWindow)
@@ -202,7 +201,7 @@ fun HomeScreen(
                         }
                     )
 
-                    // NEW: BARRAGE DETAIL POPUP
+                    // BARRAGE DETAIL POPUP
                     if (selectedBarrage != null) {
                         BarrageDetailDialog(
                             barrage = selectedBarrage!!,
@@ -276,6 +275,7 @@ fun HomeScreen(
                             isDarkTheme = false,
                             onThemeChanged = {},
                             onSupportClick = {},
+                            // REMOVED the isVolunteer = false line from here
                             viewModel = profileViewModel
                         )
                     }
@@ -298,9 +298,23 @@ fun HomeScreen(
     }
 }
 
-// NEW COMPOSABLE: The Pop-up Card
+// THE POP-UP CARD WITH LIVE DATA
 @Composable
 fun BarrageDetailDialog(barrage: Barrage, onDismiss: () -> Unit) {
+
+    // --- LIVE DATA STATE ---
+    var liveStatus by remember { mutableStateOf("Fetching live data...") }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(barrage) {
+        scope.launch {
+            liveStatus = RiverRepository.getLiveFloodRisk(
+                barrage.location.latitude,
+                barrage.location.longitude
+            )
+        }
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(16.dp),
@@ -328,14 +342,16 @@ fun BarrageDetailDialog(barrage: Barrage, onDismiss: () -> Unit) {
 
                 DetailRow("River", barrage.river)
                 DetailRow("Height", barrage.height)
-                DetailRow("Status", barrage.status, isStatus = true)
+
+                // SHOW LIVE STATUS
+                DetailRow("Live Status", liveStatus, isStatus = true)
 
                 Spacer(Modifier.height(16.dp))
 
                 // Inflow / Outflow Grid
                 Row(Modifier.fillMaxWidth()) {
                     FlowBox(
-                        title = "Inflow",
+                        title = "Historic Inflow", // Updated label to reflect static nature
                         value = barrage.inflow,
                         modifier = Modifier.weight(1f),
                         color = Color(0xFFE3F2FD), // Light Blue
@@ -343,7 +359,7 @@ fun BarrageDetailDialog(barrage: Barrage, onDismiss: () -> Unit) {
                     )
                     Spacer(Modifier.width(8.dp))
                     FlowBox(
-                        title = "Outflow",
+                        title = "Historic Outflow", // Updated label to reflect static nature
                         value = barrage.outflow,
                         modifier = Modifier.weight(1f),
                         color = Color(0xFFFFEBEE), // Light Red
@@ -357,6 +373,18 @@ fun BarrageDetailDialog(barrage: Barrage, onDismiss: () -> Unit) {
 
 @Composable
 fun DetailRow(label: String, value: String, isStatus: Boolean = false) {
+    val isWarning = isStatus && value.contains("WARNING", ignoreCase = true)
+    val isHighRisk = isStatus && value.contains("HIGH RISK", ignoreCase = true)
+    val isNormal = isStatus && value.contains("NORMAL", ignoreCase = true)
+
+    val valueColor = when {
+        isHighRisk -> Color.Red
+        isWarning -> Color(0xFFF57F17) // Orange
+        isNormal -> Color(0xFF2E7D32) // Green
+        isStatus -> Color.Gray // Loading state
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween
@@ -366,7 +394,7 @@ fun DetailRow(label: String, value: String, isStatus: Boolean = false) {
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
-            color = if (isStatus && value == "NORMAL") Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
+            color = valueColor
         )
     }
 }

@@ -1,15 +1,20 @@
 package com.roshnab.aasra.screens
 
+import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.drawable.BitmapDrawable
-import android.widget.Toast
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -35,6 +41,8 @@ import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import java.util.regex.Pattern
+import kotlin.math.*
 
 @Composable
 fun VolunteerHomeScreen(onLogoutClick: () -> Unit) {
@@ -42,20 +50,24 @@ fun VolunteerHomeScreen(onLogoutClick: () -> Unit) {
     val scope = rememberCoroutineScope()
     var currentScreen by remember { mutableStateOf(BottomNavScreen.Home) }
 
-    // --- Map Data States ---
+    // Map Data States
+    var borderPoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
     var riverPolygons by remember { mutableStateOf<List<List<GeoPoint>>>(emptyList()) }
     var riverBarrages by remember { mutableStateOf<List<Barrage>>(emptyList()) }
     var riverBasin by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
 
-    // --- Live Data from Firebase ---
+    // Live Data
     val activeReports by ReportRepository.getOpenReportsFlow().collectAsState(initial = emptyList())
-
     var selectedReport by remember { mutableStateOf<Report?>(null) }
-    var mapController by remember { mutableStateOf<IMapController?>(null) }
 
-    // Load Static River Data
+    // Location Tracking
+    var myLocation by remember { mutableStateOf<GeoPoint?>(null) }
+    var mapController by remember { mutableStateOf<IMapController?>(null) }
+    var hasZoomedToLocation by remember { mutableStateOf(false) } // To prevent constant re-zooming
+
     LaunchedEffect(Unit) {
         scope.launch {
+            borderPoints = FloodRepository.fetchBorderData() // Pakistan Outline
             riverPolygons = RiverRepository.getRiverPolygons()
             riverBarrages = RiverRepository.getBarrages()
             riverBasin = RiverRepository.getRiverBasin()
@@ -67,21 +79,13 @@ fun VolunteerHomeScreen(onLogoutClick: () -> Unit) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-
         Box(modifier = Modifier.fillMaxSize()) {
             when (currentScreen) {
                 BottomNavScreen.Home -> {
                     Scaffold(
-                        topBar = {
-                            AasraTopBar(
-                                onProfileClick = { currentScreen = BottomNavScreen.Profile },
-                                onNotificationClick = {}
-                            )
-                        }
+                        topBar = { AasraTopBar(onProfileClick = { currentScreen = BottomNavScreen.Profile }, onNotificationClick = {}) }
                     ) { padding ->
                         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-
-                            // --- THE MAP ---
                             AndroidView(
                                 modifier = Modifier.fillMaxSize(),
                                 factory = { ctx ->
@@ -89,21 +93,51 @@ fun VolunteerHomeScreen(onLogoutClick: () -> Unit) {
                                         setTileSource(TileSourceFactory.MAPNIK)
                                         setMultiTouchControls(true)
                                         setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-
                                         mapController = this.controller
                                         mapController?.setZoom(6.0)
-                                        mapController?.setCenter(GeoPoint(30.0, 70.0))
+                                        mapController?.setCenter(GeoPoint(30.0, 70.0)) // Default start
                                     }
                                 },
                                 update = { map ->
-                                    // 1. My Location
+                                    // 1. My Location & Auto Zoom
                                     if (map.overlays.none { it is MyLocationNewOverlay }) {
                                         val locOverlay = MyLocationNewOverlay(GpsMyLocationProvider(context), map)
                                         locOverlay.enableMyLocation()
+
+                                        // ZOOM TO VOLUNTEER ON START
+                                        locOverlay.runOnFirstFix {
+                                            val loc = locOverlay.myLocation
+                                            if (loc != null) {
+                                                myLocation = loc
+                                                if (!hasZoomedToLocation) {
+                                                    scope.launch {
+                                                        mapController?.animateTo(loc)
+                                                        mapController?.setZoom(14.0) // Zoom level
+                                                        hasZoomedToLocation = true
+                                                    }
+                                                }
+                                            }
+                                        }
                                         map.overlays.add(locOverlay)
+                                    } else {
+                                        val overlay = map.overlays.find { it is MyLocationNewOverlay } as? MyLocationNewOverlay
+                                        if (overlay?.myLocation != null) myLocation = overlay.myLocation
                                     }
 
-                                    // 2. River Basin & Rivers (Blue)
+                                    // 2. Pakistan Outline (Flood Zone)
+                                    if (borderPoints.isNotEmpty()) {
+                                        map.overlays.removeAll { it is Polygon && it.title == "Pakistan Flood Zone" }
+                                        val pakistanShape = Polygon().apply {
+                                            points = borderPoints
+                                            fillPaint.color = android.graphics.Color.argb(20, 0, 100, 0) // Very light fill
+                                            outlinePaint.color = android.graphics.Color.parseColor("#006400")
+                                            outlinePaint.strokeWidth = 5f // Thicker border
+                                            title = "Pakistan Flood Zone"
+                                        }
+                                        map.overlays.add(0, pakistanShape) // Add at bottom layer
+                                    }
+
+                                    // 3. River Basin
                                     if (riverBasin.isNotEmpty()) {
                                         map.overlays.removeAll { it is Polygon && it.title == "River Basin" }
                                         val basinShape = Polygon().apply {
@@ -115,6 +149,7 @@ fun VolunteerHomeScreen(onLogoutClick: () -> Unit) {
                                         map.overlays.add(1, basinShape)
                                     }
 
+                                    // 4. River Water
                                     if (riverPolygons.isNotEmpty()) {
                                         map.overlays.removeAll { it is Polygon && it.title == "River Water" }
                                         riverPolygons.forEach { riverPoints ->
@@ -129,50 +164,19 @@ fun VolunteerHomeScreen(onLogoutClick: () -> Unit) {
                                         }
                                     }
 
-                                    // 3. Barrages (Green Dots - Non-clickable in volunteer view to reduce clutter, or clickable if you prefer)
-                                    if (riverBarrages.isNotEmpty()) {
-                                        map.overlays.removeAll { it is Marker && it.title?.startsWith("Barrage") == true }
-
-                                        val bSize = 24
-                                        val bBitmap = Bitmap.createBitmap(bSize, bSize, Bitmap.Config.ARGB_8888)
-                                        val bCanvas = Canvas(bBitmap)
-                                        val bPaint = Paint().apply { color = android.graphics.Color.parseColor("#008000"); style = Paint.Style.FILL }
-                                        bCanvas.drawCircle(bSize/2f, bSize/2f, bSize/2f, bPaint)
-                                        val bIcon = BitmapDrawable(context.resources, bBitmap)
-
-                                        riverBarrages.forEach { barrage ->
-                                            val m = Marker(map).apply {
-                                                position = barrage.location
-                                                icon = bIcon
-                                                title = "Barrage: ${barrage.name}"
-                                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                                            }
-                                            map.overlays.add(m)
-                                        }
-                                    }
-
-                                    // 4. FIREBASE REPORTS (RED MARKERS)
+                                    // 5. Reports (Red Markers)
                                     if (activeReports.isNotEmpty()) {
                                         map.overlays.removeAll { it is Marker && it.title?.startsWith("SOS") == true }
-
-                                        // Custom Red Icon
                                         val rSize = 48
                                         val rBitmap = Bitmap.createBitmap(rSize, rSize, Bitmap.Config.ARGB_8888)
                                         val rCanvas = Canvas(rBitmap)
-                                        val rPaint = Paint()
-                                        rPaint.isAntiAlias = true
-
-                                        // Red Circle
-                                        rPaint.color = android.graphics.Color.RED
-                                        rPaint.style = Paint.Style.FILL
+                                        val rPaint = Paint().apply {
+                                            isAntiAlias = true; color = android.graphics.Color.RED; style = Paint.Style.FILL
+                                        }
                                         rCanvas.drawCircle(rSize / 2f, rSize / 2f, rSize / 2f, rPaint)
-
-                                        // White '!'
-                                        rPaint.color = android.graphics.Color.WHITE
-                                        rPaint.strokeWidth = 6f
+                                        rPaint.color = android.graphics.Color.WHITE; rPaint.strokeWidth = 6f
                                         rCanvas.drawLine(rSize/2f, rSize/4f, rSize/2f, rSize/1.5f, rPaint)
                                         rCanvas.drawCircle(rSize/2f, rSize/1.25f, 3f, rPaint)
-
                                         val reportIcon = BitmapDrawable(context.resources, rBitmap)
 
                                         activeReports.forEach { report ->
@@ -195,29 +199,26 @@ fun VolunteerHomeScreen(onLogoutClick: () -> Unit) {
                                 }
                             )
 
-                            // Volunteer Badge Overlay
+                            // Volunteer Badge
                             Box(Modifier.align(Alignment.TopStart).padding(16.dp)) {
                                 AssistChip(
                                     onClick = {},
-                                    label = { Text("Active Volunteer Mode") },
+                                    label = { Text("Volunteer Active") },
                                     leadingIcon = { Icon(Icons.Default.Warning, null) },
-                                    colors = AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                                        labelColor = MaterialTheme.colorScheme.onErrorContainer
-                                    )
+                                    colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                                 )
                             }
                         }
                     }
-
-                    // Show Report Details Dialog
                     if (selectedReport != null) {
-                        FirebaseReportDialog(report = selectedReport!!, onDismiss = { selectedReport = null })
+                        FirebaseReportDialog(report = selectedReport!!, myLocation = myLocation, onDismiss = { selectedReport = null })
                     }
                 }
+
                 BottomNavScreen.Requests -> {
-                    VolunteerRequestListScreen()
+                    VolunteerRequestListScreen(volunteerLocation = myLocation)
                 }
+
                 BottomNavScreen.Safety -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("Safety Guidelines & Protocols")
@@ -241,70 +242,126 @@ fun VolunteerHomeScreen(onLogoutClick: () -> Unit) {
                 else -> {}
             }
         }
-
         Column(
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             AasraBottomBar(
                 currentScreen = currentScreen,
-                items = listOf(
-                    BottomNavScreen.Home,
-                    BottomNavScreen.Requests,
-                    BottomNavScreen.Safety,
-                    BottomNavScreen.Profile
-                ),
+                items = listOf(BottomNavScreen.Home, BottomNavScreen.Requests, BottomNavScreen.Safety, BottomNavScreen.Profile),
                 onScreenSelected = { screen -> currentScreen = screen }
             )
         }
     }
 }
 
+// Reuse the calculation from list screen logic if in same package, or redefine here privately
+fun calculateDist(startLat: Double, startLng: Double, endLat: Double, endLng: Double): Double {
+    val earthRadius = 6371.0
+    val dLat = Math.toRadians(endLat - startLat)
+    val dLng = Math.toRadians(endLng - startLng)
+    val a = sin(dLat / 2) * sin(dLat / 2) +
+            cos(Math.toRadians(startLat)) * cos(Math.toRadians(endLat)) *
+            sin(dLng / 2) * sin(dLng / 2)
+    val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return earthRadius * c
+}
+
 @Composable
-fun FirebaseReportDialog(report: Report, onDismiss: () -> Unit) {
+fun FirebaseReportDialog(report: Report, myLocation: GeoPoint?, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+
+    // 1. Calculate Distance
+    val distanceText = if (myLocation != null && report.locationLat != 0.0) {
+        val dist = calculateDist(myLocation.latitude, myLocation.longitude, report.locationLat, report.locationLng)
+        if (dist < 1.0) "${String.format("%.0f", dist * 1000)}m away" else "${String.format("%.1f", dist)} km away"
+    } else {
+        "Distance Unknown"
+    }
+
+    // 2. Extract Affected Count
+    val affectedMatcher = Pattern.compile("\\[Affected: (\\d+) people\\]").matcher(report.description)
+    val affectedCount = if (affectedMatcher.find()) affectedMatcher.group(1) else "Unknown"
+
+    // 3. Clean Description
+    val cleanDescription = report.description.replace("\\[Affected:.*?\\]".toRegex(), "").trim()
+    val finalDescription = if (cleanDescription.isBlank()) "No additional details provided." else cleanDescription
+
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(24.dp),
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
-            Column(Modifier.padding(16.dp)) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Column(Modifier.padding(24.dp)) {
+                // Header
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "SOS: ${report.category}",
+                        text = report.category.uppercase(),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Color.Red
+                        color = MaterialTheme.colorScheme.error
                     )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, "Close")
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Close") }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                // INFO ROW: Distance & Affected
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Distance Badge
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.NearMe, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Spacer(Modifier.width(6.dp))
+                            Text(text = distanceText, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // Affected Badge
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.People, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
+                            Spacer(Modifier.width(6.dp))
+                            Text(text = "$affectedCount Affected", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
-                HorizontalDivider()
-                Spacer(Modifier.height(8.dp))
-
-                Text("Victim: ${report.victimName}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Phone: ${report.victimPhone}", style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(4.dp))
-
-                Text("Description:", style = MaterialTheme.typography.labelLarge, color = Color.Gray)
-                Text(report.description, style = MaterialTheme.typography.bodyLarge)
-
-                Spacer(Modifier.height(8.dp))
-                Text("Priority: ${report.priority}", style = MaterialTheme.typography.labelSmall)
 
                 Spacer(Modifier.height(16.dp))
 
+                // Victim Details
+                Text("Victim: ${report.victimName}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Phone: ${report.victimPhone}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                Spacer(Modifier.height(12.dp))
+
+                Text("Situation:", style = MaterialTheme.typography.labelLarge, color = Color.Gray)
+                Text(finalDescription, style = MaterialTheme.typography.bodyLarge)
+
+                Spacer(Modifier.height(24.dp))
+
+                // Navigation Button
                 Button(
-                    onClick = { /* Implement Google Maps Navigation Intent */ },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                    onClick = {
+                        launchGoogleMaps(context, report.locationLat, report.locationLng)
+                    },
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Text("Start Navigation", color = Color.White)
+                    Icon(Icons.Default.Navigation, null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Start Navigation", fontSize = 16.sp)
                 }
             }
         }
